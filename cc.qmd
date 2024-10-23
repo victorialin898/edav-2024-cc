@@ -1,0 +1,183 @@
+---
+title: "CommunityContribution-Fall24"
+author: Marissa Inga (mi2548) and Victoria Lin (vl2534)
+format:
+  html:
+    embed-resources: true
+execute: 
+  echo: true
+---
+
+## Machine Learning in R
+
+We wanted to take a closer look at how Machine Learning algorithms may be leveraged in R. We found that a range of resources are available, and decided to do a deep dive into the Random Forest library using the [UCI Heart Disease Dataset](https://www.kaggle.com/datasets/redwankarimsony/heart-disease-data) from Kaggle.
+
+### Initial Setup
+
+```{r}
+library(dplyr)
+library(tidyverse)
+library(ggplot2)
+```
+
+### Data Preparation
+
+#### Data Loading
+
+We chose to use the [UCI Heart Disease Dataset](https://www.kaggle.com/datasets/redwankarimsony/heart-disease-data) from Kaggle as our dataset for this tutorial. This dataset is multivariate and provides 14 independent variables and 1 dependent variable, which is the predicted health attribute.
+
+```{r}
+data <- read_csv('heart_disease_uci.csv', col_names = TRUE)
+head(data)
+```
+
+The columns are described below:
+
+1.  `id` (Unique id for each patient)
+
+2.  `age` (Age of the patient in years)
+
+3.  `origin` (place of study)
+
+4.  `sex` (Male/Female)
+
+5.  `cp` chest pain type (\[typical angina, atypical angina, non-anginal, asymptomatic\])
+
+6.  `trestbps` resting blood pressure (resting blood pressure (in mm Hg on admission to the hospital))
+
+7.  `chol` (serum cholesterol in mg/dl)
+
+8.  `fbs` (if fasting blood sugar \> 120 mg/dl)
+
+9.  `restecg` (resting electrocardiographic results)\
+    -- Values: \[normal, stt abnormality, lv hypertrophy\]
+
+10. `thalach`: maximum heart rate achieved
+
+11. `exang`: exercise-induced angina (True/ False)
+
+12. `oldpeak`: ST depression induced by exercise relative to rest
+
+13. `slope`: the slope of the peak exercise ST segment
+
+14. `ca`: number of major vessels (0-3) colored by fluoroscopy
+
+15. `thal`: \[normal; fixed defect; reversible defect\]
+
+16. `num`: the predicted attribute
+
+#### Data Cleaning
+
+Now that we have loaded our data, we can take a look at the contents and do some cleaning. First we drop the id column:
+
+```{r}
+data_cleaned <- data
+data_cleaned <- select(data_cleaned, names(data_cleaned)[2:16])
+```
+
+Then we checked for NAs, and found a few in there, so we filled them with the median of the non-null numeric values, and for character columns used the mode.
+
+```{r}
+colSums(is.na(data_cleaned))
+
+data_cleaned$trestbps[is.na(data_cleaned$trestbps)] <- median(data_cleaned$trestbps, na.rm = TRUE)
+data_cleaned$chol[is.na(data_cleaned$chol)] <- median(data_cleaned$chol, na.rm = TRUE)
+data_cleaned$fbs[is.na(data_cleaned$fbs)] <- median(data_cleaned$fbs, na.rm = TRUE)
+data_cleaned$restecg[is.na(data_cleaned$restecg)] <- mode(data_cleaned$restecg)
+data_cleaned$thalch[is.na(data_cleaned$thalch)] <- median(data_cleaned$thalch, na.rm = TRUE)
+data_cleaned$exang[is.na(data_cleaned$exang)] <- median(data_cleaned$exang, na.rm = TRUE)
+data_cleaned$oldpeak[is.na(data_cleaned$oldpeak)] <- median(data_cleaned$oldpeak, na.rm = TRUE)
+data_cleaned$slope[is.na(data_cleaned$slope)] <- mode(data_cleaned$slope)
+data_cleaned$ca[is.na(data_cleaned$ca)] <- median(data_cleaned$ca, na.rm = TRUE)
+data_cleaned$thal[is.na(data_cleaned$thal)] <- mode(data_cleaned$thal)
+
+colSums(is.na(data_cleaned))
+```
+
+Now we take a look at the `character` type columns, and convert to factor:
+
+```{r}
+data_cleaned$sex <- as.factor(data_cleaned$sex)
+data_cleaned$dataset <- as.factor(data_cleaned$dataset)
+data_cleaned$cp <- as.factor(data_cleaned$cp)
+data_cleaned$restecg <- as.factor(data_cleaned$restecg)
+data_cleaned$slope <- as.factor(data_cleaned$slope)
+data_cleaned$thal <- as.factor(data_cleaned$thal)
+data_cleaned$num <- as.factor(data_cleaned$num)
+
+
+summary(Filter(is.factor, data_cleaned))
+summary(Filter(is.numeric, data_cleaned))
+```
+
+Now that our data is cleaned, we want to split our data into a train set and test set. R makes this easy with the sample function. We are choosing to hold out 25% of our data for testing.
+
+```{r}
+sample <- sample.int(n = nrow(data_cleaned), size = floor(.75*nrow(data_cleaned)), replace = F)
+train <- data_cleaned[sample, ]
+test  <- data_cleaned[-sample, ]
+
+```
+
+### Random Forest Package Exploration
+
+#### Fitting the data
+
+After loading in `randomForest`, we separate our data into X and Y vectors, then feed them to the randomForest package to get a fitted model.
+
+```{r}
+library(randomForest) 
+
+trainX <- train[, !(names(train) %in% c('num'))]
+trainY <- train$num
+
+testX <- test[, !(names(test) %in% c('num'))]
+testY <- test$num
+
+
+# num is what we are trying to predict
+# 0 is no heart disease, 1-4 is severity
+train <- cbind(trainX, num = trainY)
+fit <- randomForest(num ~ ., data = train,
+                    ntree = 100, # Number of trees
+                    mtry = 10, # Number of variables sampled as candidates per tree
+                    maxnodes = 7, # Max # of terminal nodes (limit tree growth)
+                    nodesize = 0.01 * nrow(train)) # Stopping criterion limiting depth of trees
+
+```
+
+#### Generating predictions
+
+Generating predictions with `randomForest` is straightforward - just call `predict` on the fitted model, and feed in the X vector to predict for.
+
+```{r}
+pred <- predict(fit, testX)
+test <- cbind(testX, pred = pred)
+```
+
+#### Analyzing performance
+
+The `randomForest` package has some helpful functions to analyze performance right out of the box. The `varImpPlot` function automatically generates a visualization of variable importance by MeanDecreaseGini.
+
+```{r}
+varImpPlot(fit)
+
+```
+
+The `importance` function returns a table version of variable importance by MeanDecreaseGini.
+
+```{r}
+importance(fit)
+```
+
+With the help of the `caret` library, we can get additional helpful information like the confusion matrix, which breaks down our performance by class.
+
+```{r}
+library(caret)
+
+confusionMatrix(table(pred,testY))
+```
+
+### Summary
+
+The `randomForest` library in R is straightforward to use, and provides a powerful out of the box solution for classification problems in R. The package allows us to adjust parameters like the number of trees, node size, max tree depth, and number of variables used in each tree. It also includes helpful functions for feature analysis and performance evaluation. Applying it to the UCI Heart Disease dataset, we were able to get a meaningful accuracy when detecting absence of heart disease (Class 0), and a relatively high accuracy overall.
